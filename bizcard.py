@@ -1,127 +1,137 @@
+import streamlit as st
+import psycopg2
 import easyocr
 from PIL import Image
 import io
-import re
-import pandas as pd
-import psycopg2
-import streamlit as st
-from streamlit_option_menu import option_menu
 
-mydb = psycopg2.connect(host='localhost', user='postgres', password='123456', database='bizcard', port=5432)
-cursor = mydb.cursor()
+# Function to create PostgreSQL database table if it doesn't exist
+def create_table():
+    conn = psycopg2.connect(
+        host="localhost",
+        database="bizcard",
+        user="postgres",
+        password="123456"
+    )
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS business_cards
+                 (id SERIAL PRIMARY KEY,
+                 company TEXT,
+                 name TEXT,
+                 designation TEXT,
+                 contact TEXT,
+                 email TEXT,
+                 website TEXT,
+                 area TEXT,
+                 city TEXT,
+                 state TEXT,
+                 pincode TEXT,
+                 image BYTEA)''')
+    conn.commit()
+    conn.close()
 
-reader = easyocr.Reader(['en'], gpu=False)
-image_path = "C:\\Users\\Saravanan\\OneDrive\\Desktop\\Bizcard\\1.png"
-image_data = reader.readtext(image_path, detail = 0)
-image_data
+# Function to save business card data to PostgreSQL database
+def save_to_database(data, image):
+    conn = psycopg2.connect(
+        host="localhost",
+        database="bizcard",
+        user="postgres",
+        password="123456"
+    )
+    c = conn.cursor()
+    c.execute('''INSERT INTO business_cards (company, name, designation, contact, email, website, area, city, state, pincode, image)
+                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)''', data)
+    conn.commit()
+    conn.close()
 
-image = Image.open(image_path)
-
-image = image.convert('RGB')
-
-
-import re
-
-def extracted_text (image_path):
-    details = reader.readtext(image_path, detail = 0)
+# Function to extract text from image using easyOCR
+def extract_text(image):
+    reader = easyocr.Reader(['en'])
     
-    data = {
-        "name": "",
-        "designation": "",
-        "contact": [],
-        "email": "",
-        "website": "",
-        "address": "",
-        "city": "",
-        "state":"",
-        "pincode": "",
-        "company": "",
-       
-    }
-
-    for i in range(len(details)):
-        match1 = re.findall('([0-9]+ [A-Z]+ [A-Za-z]+)., ([a-zA-Z]+). ([a-zA-Z]+)', details[i])
-        match2 = re.findall('([0-9]+ [A-Z]+ [A-Za-z]+)., ([a-zA-Z]+)', details[i])
-        match3 = re.findall('^[E].+[a-z]', details[i])
-        match4 = re.findall('([A-Za-z]+) ([0-9]+)', details[i])
-        match5 = re.findall('([0-9]+ [a-zA-z]+)', details[i])
-        match6 = re.findall('.com$', details[i])
-        match7 = re.findall('([0-9]+)', details[i])
-        if i == 0:
-            data["name"] = details[i]
-        elif i == 1:
-            data["designation"] = details[i]
-        elif '-' in details[i]:
-            data["contact"].append(details[i])
-        elif '@' in details[i]:
-            data["email"] = details[i]
-        elif "www " in details[i].lower() or "www." in details[i].lower():
-            data["website"] = details[i]
-        elif "WWW" in details[i]:
-            data["website"] = details[i] + "." + details[i+1]
-        elif match6:
-            pass
-        elif match1:
-            data["street"] = match1[0][0]
-            data["city"] = match1[0][1]
-            data["state"] = match1[0][2]
-        elif match2:
-            data["street"] = match2[0][0]
-            data["city"] = match2[0][1]
-        elif match3:
-            data["city"] = match3[0]
-        elif match4:
-            data["state"] = match4[0][0]
-            data["pincode"] = match4[0][1]
-        elif match5:
-            data["street"] = match5[0] + ' St,'
-        elif match7:
-            data["pincode"] = match7[0]
-        else:
-            data["company"].append(details[i])
-
-    data["contact"] = " & ".join(data["contact"])
-    # Join company names with comma and space
-    data["company"] = " ".join(data["company"])
-    return data
-
-df = pd.DataFrame(data)
-
-st.set_page_config(page_title= "BizCardX",
-                   page_icon= '💼',
-                   layout= "wide",)
-
-text ='Bizcardx -- Extracting Business Card Data with OCR'  
-st.markdown(f"<h2 style='color: white; text-align: center;'>{text} </h2>", unsafe_allow_html=True)
-
-st.markdown(f""" <style>.stApp {{
-                    background: url('https://img.freepik.com/free-vector/gradient-golden-luxury-business-card-template_23-2149035722.jpg?w=740&t=st=1712021022~exp=1712021622~hmac=af788945480688006d710a5bda024f6d2b87d50990c0edd91b1e0c7c4b205ddf');   
-                    background-size: cover}}
-                 </style>""",unsafe_allow_html=True)
-
-col1,col2 = st.columns([1,4])
-with col1:
-    menu = option_menu("Menu", ["Home","Upload","Database"], 
-                    icons=["house",'cloud-upload', "list-task"],
-                    menu_icon="cast",
-                    default_index=0,
-                    styles={"icon": {"color": "orange", "font-size": "20px"},
-                            "nav-link": {"font-size": "15px", "text-align": "left", "margin": "-2px", "--hover-color": "#FFFFFF"},
-                            "nav-link-selected": {"background-color": "#225154"}})
-    if menu == 'Upload':
-        upload_menu = option_menu("Upload", ['Predefined','Undefined'],                        
-                        menu_icon='cloud-upload',
-                        default_index=0,
-                        styles={"icon": {"color": "orange", "font-size": "20px"},
-                                "nav-link": {"font-size": "15px", "text-align": "left", "margin": "-2px", "--hover-color": "#FFFFFF"},
-                                "nav-link-selected": {"background-color": "#225154"}})
+    # Convert image to RGB format (if RGBA)
+    if image.mode == 'RGBA':
+        image = image.convert('RGB')
     
-    if menu == 'Database':
-        Database_menu = option_menu("Database", ['Modify','Delete'], 
-                        
-                        menu_icon="list-task",
-                        default_index=0,
-                        styles={"icon": {"color": "orange", "font-size": "20px"},
-                                "nav-link": {"font-size": "15px", "text-align": "left", "margin": "0px", "--hover-color": "#FFFFFF"},
-                                "nav-link-selected": {"background-color": "#225154"}})
+    # Convert image to bytes
+    image_bytes = io.BytesIO()
+    image.save(image_bytes, format='JPEG')
+    image_bytes = image_bytes.getvalue()
+    
+    # Extract text from the image bytes
+    result = reader.readtext(image_bytes)
+    return result
 
+# Function to display saved data and allow update and delete operations
+def display_saved_data():
+    conn = psycopg2.connect(
+        host="localhost",
+        database="bizcard",
+        user="postgres",
+        password="123456"
+    )
+    c = conn.cursor()
+    c.execute('''SELECT * FROM business_cards''')
+    rows = c.fetchall()
+    conn.close()
+
+    st.subheader('Saved Data:')
+    for row in rows:
+        st.write(f"ID: {row[0]}, Company: {row[1]}, Name: {row[2]}, Designation: {row[3]}, Contact: {row[4]}, Email: {row[5]}, Website: {row[6]}, Area: {row[7]}, City: {row[8]}, State: {row[9]}, Pincode: {row[10]}")
+        if st.button(f"Update {row[0]}"):
+            update_data(row[0])
+        if st.button(f"Delete {row[0]}"):
+            delete_data(row[0])
+
+# Function to update data
+def update_data(id):
+    # Implement update logic here
+    st.write(f"Updating data for ID: {id}")
+
+# Function to delete data
+def delete_data(id):
+    # Implement delete logic here
+    st.write(f"Deleting data for ID: {id}")
+
+# Streamlit UI
+def main():
+    st.title("BizCardX: Extracting Business Card Data with OCR")
+
+    # Create sidebar with dropdown options
+    st.sidebar.title('Options')
+    selected_option = st.sidebar.selectbox('Select Option', ['Home', 'Upload', 'Extract', 'Modify', 'Delete'])
+
+    if selected_option == 'Upload':
+        # File uploader
+        uploaded_file = st.file_uploader("Upload a business card image", type=["jpg", "png", "jpeg"])
+
+        if uploaded_file is not None:
+            image = Image.open(uploaded_file)
+            st.image(image, caption='Uploaded Image', use_column_width=True)
+
+            if st.button('Extract Information'):
+                # Extract text from the uploaded image
+                extracted_text = extract_text(image)
+
+                # Display extracted information
+                st.subheader('Extracted Information:')
+                for item in extracted_text:
+                    st.write(item[1])
+
+                # Convert image to bytes
+                image_bytes = io.BytesIO()
+                image.save(image_bytes, format='JPEG')
+                image_bytes = image_bytes.getvalue()
+
+                # Save extracted information to PostgreSQL database
+                save_to_database(extracted_text, image_bytes)
+                st.success('Information saved to database successfully.')
+
+    elif selected_option == 'Extract':
+        # Display saved data and allow update and delete operations
+        display_saved_data()
+
+# Create PostgreSQL database table
+create_table()
+
+# Run Streamlit app
+if __name__ == "__main__":
+    main()
