@@ -1,3 +1,6 @@
+# Ensure the path variable is defined
+path = False  
+
 # Package
 # image_processing
 
@@ -17,7 +20,6 @@ import os
 import streamlit as st
 from streamlit_option_menu import option_menu
 
-
 # Creating a database engine
 engine = create_engine("postgresql+psycopg2://postgres:123456@localhost/bizcard")
 
@@ -31,9 +33,6 @@ metadata.reflect(bind=engine)
 # Accessing the 'business_card' table from the reflected metadata
 #business_card_table = Table('business_card', metadata, autoload=True, autoload_with=engine)
 
-
-
-# Define the structure of the 'business_card' table
 # Define the structure of the 'business_card' table
 business_card_table = Table(
     'business_card', metadata,
@@ -128,7 +127,6 @@ def store_data(data):
     df.to_sql('business_card', engine, if_exists='append', index=False)
     return df
 
-
 # Streamlit part
 
 text = 'BizCardX'   
@@ -148,6 +146,7 @@ with col1:
                     styles={"icon": {"color": "orange", "font-size": "20px"},
                             "nav-link": {"font-size": "15px", "text-align": "left", "margin": "-2px", "--hover-color": "#FFFFFF"},
                             "nav-link-selected": {"background-color": "#225154"}})
+    Database_menu = None  # Initialize Database_menu variable
     if menu == 'Database':
         Database_menu = option_menu("Database", ['Modify','Delete'], 
                         
@@ -174,9 +173,9 @@ with col2:
 
 
     if menu == 'Upload':
-        path = False
+        path = False  # Define path variable here
+        upload = False  # Define the 'upload' variable here with an initial value
     col3, col4 = st.columns([2, 2])
-    upload = False  # Define the 'upload' variable here with an initial value
     with col3:
         uploaded_file = st.file_uploader("**Choose a file**", type=["jpg", "png", "jpeg"])
         if uploaded_file is not None:
@@ -215,75 +214,64 @@ with col2:
                 st.write('**Pincode** :', processed_details['pincode'])
 
 
-    if Database_menu == 'Database':
-    # Read data from the 'business_card' table into a DataFrame
-        try:
-            df = pd.read_sql('SELECT * FROM business_card', engine)
-            st.header("Database")                    
-            st.dataframe(df)
-            st.button('Show Changes')
-        except Exception as e:
-            st.error(f"Failed to read data from the database: {str(e)}")
-        finally:
-        # Close the database connection
-            connection.close()
-
-
-        if Database_menu == 'Modify':
-            modify_col_1,modify_col_2 = st.columns([1,1])
-            with modify_col_1:
-                st.header('Choose where to modify the details.')
-                names= ['Please select one','name','contact','email']
-                selected = st.selectbox('**Select Categories**',names)
-                if selected != 'Please select one':
-                        select = ['Please select one'] + list(df[selected])
-                        select_detail = st.selectbox(f'**Select the {selected}**', select)
-                        
-                        with modify_col_2:
-                            if select_detail != 'Please select one':
-                                st.header('Choose what details to modify.')
-                                df1 = df[df[selected] == select_detail]
-                                df1 = df1.reset_index()
-                                select_modify = st.selectbox('**Select categories**', ['Please select one'] + list(df.columns))
-                                if select_modify != 'Please select one':
-                                    a = df1[select_modify][0]            
-                                    st.write(f'Do you want to change {select_modify}: **{a}** ?')
-                                    modified = st.text_input(f'**Enter the {select_modify} to be modified.**')
-                                    if modified:
-                                        st.write(f'{select_modify} **{a}** will change as **{modified}**')
-                                        with modify_col_1:
-                                            if st.button("Commit Changes"):
-                                                # Define the update statement
-                                                update_statement = (
-                                                                    update(business_card_table)
-                                                                    .where(business_card_table.c[selected] == select_detail)
-                                                                    .values({select_modify: modified})
-                                                                )
-                                                # Executing the update statement
-                                                connection.execute(update_statement)
-                                                connection.commit()
-                                                st.success("Changes committed successfully!")
-            
-        if Database_menu == 'Delete':
-            names= ['Please select one','name','email']
-            delete_selected = st.selectbox('**Select where to delete the details**',names) 
-            if delete_selected != 'Please select one':
-                select = df[delete_selected]
-                delete_select_detail = st.selectbox(f'**Select the {delete_selected} to remove**', ['Please select one'] + list(select))
-                if delete_select_detail != 'Please select one':
-                    st.write(f'Do you want to delete **{delete_select_detail}** card details ?')
-                    col5,col6,col7 =st.columns([1,1,5])
-                    delete = col5.button('Yes I do')
-                    if delete:
-                        delete_query = (
-                                        business_card_table.delete()
-                                        .where(business_card_table.c[delete_selected] == delete_select_detail)
+    if Database_menu == 'Modify':
+        print("Database_menu: Modify")  # Added print statement for debugging
+        modify_col_1,modify_col_2 = st.columns([1,1])
+        with modify_col_1:
+            st.header('Choose where to modify the details.')
+            names= ['Please select one','name','contact','email']
+            selected = st.selectbox('**Select Categories**',names)
+            if selected != 'Please select one':
+                # Get the DataFrame from the database
+                df = pd.read_sql_table('business_card', engine)
+                select = ['Please select one'] + list(df[selected])
+                select_detail = st.selectbox(f'**Select the {selected}**', select)
+                    
+                with modify_col_2:
+                    if select_detail != 'Please select one':
+                        st.header('Choose what details to modify.')
+                        df1 = df[df[selected] == select_detail]
+                        df1 = df1.reset_index()
+                        select_modify = st.selectbox('**Select categories**', ['Please select one'] + list(df.columns))
+                        if select_modify != 'Please select one':
+                            a = df1[select_modify][0]            
+                            st.write(f'Do you want to change {select_modify}: **{a}** ?')
+                            modified = st.text_input(f'**Enter the {select_modify} to be modified.**')
+                            if modified:
+                                st.write(f'{select_modify} **{a}** will change as **{modified}**')
+                                with modify_col_1:
+                                    if st.button("Commit Changes"):
+                                        # Define the update statement
+                                        update_statement = (
+                                            update(business_card_table)
+                                            .where(business_card_table.c[selected] == select_detail)
+                                            .values({select_modify: modified})
                                         )
+                                        # Executing the update statement
+                                        connection.execute(update_statement)
+                                        connection.commit()
+                                        st.success("Changes committed successfully!")
+        
+    if Database_menu == 'Delete':
+        print("Database_menu: Delete")  # Added print statement for debugging
+        names= ['Please select one','name','email']
+        delete_selected = st.selectbox('**Select where to delete the details**',names) 
+        if delete_selected != 'Please select one':
+            # Get the DataFrame from the database
+            df = pd.read_sql_table('business_card', engine)
+            select = df[delete_selected]
+            delete_select_detail = st.selectbox(f'**Select the {delete_selected} to remove**', ['Please select one'] + list(select))
+            if delete_select_detail != 'Please select one':
+                st.write(f'Do you want to delete **{delete_select_detail}** card details ?')
+                col5,col6,col7 =st.columns([1,1,5])
+                delete = col5.button('Yes I do')
+                if delete:
+                    delete_query = (
+                        business_card_table.delete()
+                        .where(business_card_table.c[delete_selected] == delete_select_detail)
+                    )
 
-                        # Execute the delete statement
-                        connection.execute(delete_query)
-                        connection.commit()
-                        st.success("Data Deleted successfully", icon ='✅')
-                   
-            
-                                                                        
+                    # Execute the delete statement
+                    connection.execute(delete_query)
+                    connection.commit()
+                    st.success("Data Deleted successfully", icon ='✅')
